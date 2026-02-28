@@ -82,8 +82,12 @@ root.mainloop()
 CLIP_PID=$!
 sleep 0.3
 
-# Find VS Code window
-VSCODE_WID=$(xdotool search --name "Visual Studio Code" 2>/dev/null | head -1)
+# Find VS Code window matching current project
+PROJECT_NAME=$(basename "$REPO_ROOT")
+# Try project-specific match first (title: "file — project — Visual Studio Code")
+VSCODE_WID=$(xdotool search --name "$PROJECT_NAME.*Visual Studio Code" 2>/dev/null | head -1)
+# Fallback: any VS Code window
+[ -z "$VSCODE_WID" ] && VSCODE_WID=$(xdotool search --name "Visual Studio Code" 2>/dev/null | head -1)
 [ -z "$VSCODE_WID" ] && VSCODE_WID=$(xdotool search --class "code" 2>/dev/null | head -1)
 
 if [ -z "$VSCODE_WID" ]; then
