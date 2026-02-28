@@ -101,15 +101,13 @@ fi
 xdotool windowactivate --sync "$VSCODE_WID"
 sleep 0.3
 
-# Open Command Palette (Ctrl+Shift+P)
+# Open Codex Sidebar via Command Palette to focus the input area
 xdotool key --clearmodifiers ctrl+shift+p
 sleep 0.5
-
-# Type "New Codex Agent" and execute
-xdotool type --clearmodifiers --delay 30 "New Codex Agent"
+xdotool type --clearmodifiers --delay 30 "Open Codex Sidebar"
 sleep 0.5
 xdotool key Return
-sleep 1.5
+sleep 1.0
 
 # Paste the prompt (Ctrl+V) and submit (Enter)
 xdotool key --clearmodifiers ctrl+v
