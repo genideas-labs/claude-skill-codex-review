@@ -8,6 +8,26 @@ cd "$REPO_ROOT"
 BRANCH=$(git branch --show-current)
 BASE_BRANCH="main"
 
+# ── 0. Parse arguments ──────────────────────────────────────────
+MODE="vscode"
+CONTEXT_FILE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        cli)
+            MODE="cli"
+            shift
+            ;;
+        --context)
+            CONTEXT_FILE="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
 # ── 1. Check for changes ─────────────────────────────────────────
 DIFF_COMMITTED=$(git diff "${BASE_BRANCH}...HEAD" 2>/dev/null || true)
 DIFF_UNCOMMITTED=$(git diff 2>/dev/null || true)
@@ -34,12 +54,21 @@ for dir in "$REPO_ROOT/specs"/*/; do
     fi
 done
 
-# ── 3. Build short review prompt (Codex explores repo itself) ────
+# ── 3. Build review prompt ───────────────────────────────────────
+CONTEXT_SECTION=""
+if [ -n "$CONTEXT_FILE" ] && [ -f "$CONTEXT_FILE" ]; then
+    CONTEXT_SECTION="
+
+--- 변경 요약 (Claude 제공) ---
+$(cat "$CONTEXT_FILE")
+---"
+fi
+
 PROMPT="코드 리뷰를 수행해주세요. 파일을 수정하지 마세요.
 
 브랜치 '${BRANCH}'의 변경 사항을 '${BASE_BRANCH}' 대비 리뷰해주세요.
 변경 통계: ${FILES_CHANGED}
-
+${CONTEXT_SECTION}
 리뷰 항목:
 1. 코드 품질: 버그, 로직 오류, 엣지 케이스, 네이밍, 가독성
 2. 스펙 GAP 분석: ${SPEC_REF:-스펙 없음} 파일과 비교하여 미구현/불완전한 부분 식별
@@ -52,11 +81,10 @@ echo "=== Codex Review ==="
 echo "Branch: $BRANCH"
 echo "Changes: $FILES_CHANGED"
 [ -n "$SPEC_REF" ] && echo "Spec: $SPEC_REF" || echo "Spec: (no matching spec found)"
+[ -n "$CONTEXT_FILE" ] && echo "Context: $CONTEXT_FILE" || echo "Context: (none)"
 echo "===================="
 
 # ── 4. Mode selection ─────────────────────────────────────────────
-MODE="${1:-vscode}"
-
 if [ "$MODE" = "cli" ]; then
     # Fallback: launch Codex CLI directly
     exec codex --approval-mode suggest "$PROMPT"
@@ -117,5 +145,6 @@ xdotool key Return
 # Cleanup
 kill "$CLIP_PID" 2>/dev/null || true
 rm -f "$PROMPT_FILE"
+[ -n "$CONTEXT_FILE" ] && rm -f "$CONTEXT_FILE"
 
 echo "Review task sent to VS Code Codex panel."
