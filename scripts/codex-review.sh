@@ -11,6 +11,7 @@ BASE_BRANCH="main"
 # ── 0. Parse arguments ──────────────────────────────────────────
 MODE="vscode"
 CONTEXT_FILE=""
+REVIEW_SCOPE="full"   # full | commit | branch-gap | gap
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -20,6 +21,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --context)
             CONTEXT_FILE="$2"
+            shift 2
+            ;;
+        --scope)
+            REVIEW_SCOPE="$2"
             shift 2
             ;;
         *)
@@ -54,7 +59,7 @@ for dir in "$REPO_ROOT/specs"/*/; do
     fi
 done
 
-# ── 3. Build review prompt ───────────────────────────────────────
+# ── 3. Build review prompt (scope-dependent) ────────────────────
 CONTEXT_SECTION=""
 if [ -n "$CONTEXT_FILE" ] && [ -f "$CONTEXT_FILE" ]; then
     CONTEXT_SECTION="
@@ -64,7 +69,58 @@ $(cat "$CONTEXT_FILE")
 ---"
 fi
 
-PROMPT="코드 리뷰를 수행해주세요. 파일을 수정하지 마세요.
+DIFF_CMD="git diff ${BASE_BRANCH}...HEAD"
+# For commit scope, use only the latest commit diff
+if [ "$REVIEW_SCOPE" = "commit" ]; then
+    DIFF_CMD="git diff HEAD~1..HEAD"
+fi
+
+case "$REVIEW_SCOPE" in
+    commit)
+        PROMPT="코드 리뷰를 수행해주세요. 파일을 수정하지 마세요.
+
+브랜치 '${BRANCH}'의 **최신 커밋**만 리뷰해주세요.
+변경 통계: ${FILES_CHANGED}
+${CONTEXT_SECTION}
+리뷰 항목:
+1. 코드 품질: 버그, 로직 오류, 엣지 케이스, 네이밍, 가독성
+2. 브랜치 스펙 GAP: ${SPEC_REF:-스펙 없음}과 비교하여 이 커밋의 미충족/불완전 부분만 식별
+
+${DIFF_CMD} 로 변경 사항을 확인하고, 필요시 전체 파일도 읽어주세요.
+간결한 리뷰 리포트를 한국어로 출력해주세요."
+        ;;
+    branch-gap)
+        PROMPT="스펙 GAP 분석만 수행해주세요. 파일을 수정하지 마세요.
+
+브랜치 '${BRANCH}'의 전체 변경분을 ${SPEC_REF:-스펙 없음}과 비교하여:
+${CONTEXT_SECTION}
+분석 항목:
+1. FR(기능 요구사항) 충족 현황: 각 FR별 충족/미충족/부분충족
+2. NFR(비기능 요구사항) 충족 현황
+3. 성공 기준(SC) 달성 여부
+4. 미구현/불완전한 부분과 권장 조치
+
+${DIFF_CMD} 로 변경 사항을 확인하고, 스펙 파일을 반드시 읽어주세요.
+구조화된 GAP 리포트를 한국어로 출력해주세요."
+        ;;
+    gap)
+        PROMPT="전체 GAP 분석을 수행해주세요. 파일을 수정하지 마세요.
+
+브랜치 '${BRANCH}'의 변경분을 '${BASE_BRANCH}' 대비 분석합니다.
+변경 통계: ${FILES_CHANGED}
+${CONTEXT_SECTION}
+분석 항목:
+1. 스펙 GAP: ${SPEC_REF:-스펙 없음}과 비교 — FR/NFR/SC 충족 현황
+2. API 계약 GAP: contracts/ 문서와 실제 구현의 불일치
+3. 데이터 모델 GAP: data-model.md와 실제 마이그레이션/모델의 불일치
+4. 미구현/불완전한 부분의 심각도별 정리 및 권장 조치
+
+${DIFF_CMD} 로 변경 사항을 확인하고, 스펙/계약 문서를 반드시 읽어주세요.
+구조화된 GAP 리포트를 한국어로 출력해주세요."
+        ;;
+    *)
+        # full (default)
+        PROMPT="코드 리뷰를 수행해주세요. 파일을 수정하지 마세요.
 
 브랜치 '${BRANCH}'의 변경 사항을 '${BASE_BRANCH}' 대비 리뷰해주세요.
 변경 통계: ${FILES_CHANGED}
@@ -74,11 +130,14 @@ ${CONTEXT_SECTION}
 2. 스펙 GAP 분석: ${SPEC_REF:-스펙 없음} 파일과 비교하여 미구현/불완전한 부분 식별
 3. 전체 평가: 보안, 성능, 유지보수성
 
-git diff ${BASE_BRANCH}...HEAD 로 변경 사항을 확인하고, 필요시 전체 파일도 읽어주세요.
+${DIFF_CMD} 로 변경 사항을 확인하고, 필요시 전체 파일도 읽어주세요.
 구조화된 리뷰 리포트를 한국어로 출력해주세요."
+        ;;
+esac
 
 echo "=== Codex Review ==="
 echo "Branch: $BRANCH"
+echo "Scope: $REVIEW_SCOPE"
 echo "Changes: $FILES_CHANGED"
 [ -n "$SPEC_REF" ] && echo "Spec: $SPEC_REF" || echo "Spec: (no matching spec found)"
 [ -n "$CONTEXT_FILE" ] && echo "Context: $CONTEXT_FILE" || echo "Context: (none)"
